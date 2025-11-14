@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Check, Copy, Mail } from "lucide-react";
+import { ArrowLeft, Check, Copy, Mail, Save } from "lucide-react";
+import { useSession } from "@/lib/auth-client";
 
 interface SignatureData {
+  name: string;
   fullName: string;
   jobTitle: string;
   company: string;
@@ -23,8 +25,15 @@ interface SignatureData {
 }
 
 export default function CreateSignature() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const editId = searchParams?.get("edit");
+
   const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<SignatureData>({
+    name: "My Signature",
     fullName: "John Smith",
     jobTitle: "Product Manager",
     company: "Tech Innovations Inc.",
@@ -37,8 +46,68 @@ export default function CreateSignature() {
     template: "modern",
   });
 
+  // Load signature if editing
+  useEffect(() => {
+    if (editId && session) {
+      fetch(`/api/signatures`)
+        .then((res) => res.json())
+        .then((data) => {
+          const sig = data.signatures?.find((s: any) => s.id === parseInt(editId));
+          if (sig) {
+            setFormData({
+              name: sig.name,
+              fullName: sig.fullName,
+              jobTitle: sig.jobTitle || "",
+              company: sig.company || "",
+              email: sig.email || "",
+              phone: sig.phone || "",
+              website: sig.website || "",
+              linkedin: sig.linkedin || "",
+              twitter: sig.twitter || "",
+              instagram: sig.instagram || "",
+              template: sig.template,
+            });
+          }
+        });
+    }
+  }, [editId, session]);
+
   const handleChange = (field: keyof SignatureData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async () => {
+    if (!session) {
+      alert("Please sign in to save signatures");
+      router.push("/login");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const url = editId ? `/api/signatures/${editId}` : "/api/signatures";
+      const method = editId ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      if (res.ok) {
+        alert("Signature saved successfully!");
+        router.push("/dashboard");
+      } else {
+        const error = await res.json();
+        alert(error.error || "Failed to save signature");
+      }
+    } catch (error) {
+      console.error("Save failed:", error);
+      alert("Failed to save signature");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const generateHTML = () => {
@@ -141,20 +210,27 @@ export default function CreateSignature() {
     <div className="min-h-screen bg-slate-50">
       <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80">
+          <Link href={session ? "/dashboard" : "/"} className="flex items-center gap-2 hover:opacity-80">
             <ArrowLeft className="h-5 w-5" />
             <div className="flex items-center gap-2">
               <Mail className="h-6 w-6" />
               <span className="font-bold text-xl">SignaturePro</span>
             </div>
           </Link>
+          {!session && (
+            <Link href="/login">
+              <Button variant="outline">Sign In</Button>
+            </Link>
+          )}
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Create Your Signature</h1>
+            <h1 className="text-3xl font-bold mb-2">
+              {editId ? "Edit Signature" : "Create Your Signature"}
+            </h1>
             <p className="text-muted-foreground">
               Fill in your details and watch the preview update in real-time
             </p>
@@ -168,6 +244,16 @@ export default function CreateSignature() {
                   <CardTitle>Your Information</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Signature Name *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => handleChange("name", e.target.value)}
+                      placeholder="e.g., Work Signature, Personal"
+                    />
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="fullName">Full Name *</Label>
                     <Input
@@ -304,24 +390,39 @@ export default function CreateSignature() {
                     <div dangerouslySetInnerHTML={{ __html: generateHTML() }} />
                   </div>
 
-                  <Button onClick={copyToClipboard} className="w-full" size="lg">
-                    {copied ? (
-                      <>
-                        <Check className="mr-2 h-5 w-5" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="mr-2 h-5 w-5" />
-                        Copy Signature HTML
-                      </>
+                  <div className="space-y-2">
+                    <Button onClick={copyToClipboard} className="w-full" variant="outline">
+                      {copied ? (
+                        <>
+                          <Check className="mr-2 h-5 w-5" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="mr-2 h-5 w-5" />
+                          Copy HTML
+                        </>
+                      )}
+                    </Button>
+
+                    {session && (
+                      <Button onClick={handleSave} className="w-full" disabled={saving}>
+                        {saving ? (
+                          "Saving..."
+                        ) : (
+                          <>
+                            <Save className="mr-2 h-5 w-5" />
+                            {editId ? "Update Signature" : "Save Signature"}
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </Button>
+                  </div>
 
                   <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                     <h4 className="font-semibold text-sm mb-2">How to add to your email:</h4>
                     <ol className="text-sm space-y-1 text-muted-foreground list-decimal list-inside">
-                      <li>Click "Copy Signature HTML" above</li>
+                      <li>Click "Copy HTML" above</li>
                       <li>Open your email settings</li>
                       <li>Find the signature section</li>
                       <li>Paste the HTML code</li>
