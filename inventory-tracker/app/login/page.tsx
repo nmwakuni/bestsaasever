@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Package, Lock, ArrowRight } from "lucide-react";
+import { Package, Lock, ArrowRight, Mail } from "lucide-react";
 import { signIn } from "@/lib/auth-client";
 
 export default function LoginPage() {
